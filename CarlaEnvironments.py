@@ -48,21 +48,18 @@ class CarlaEnvironment:
 
 
     def __del__(self):
-        #if self.deleted:
-        #    return
-        #if not self.initialization_successful:
-        #    return
-
+        print("destructor is called")
         self.change_settings(delta_seconds=1 / 30.0, no_rendering_mode=False, synchronous_mode=False)
+        try:
+            self.clear_objects()
+        except:
+            pass
+
+    def clear_objects(self):
+        print("clearing the environment")
         for client in self.actor_list:
-            try:
-                client.destroy()
-            except Exception:
-                print("an actor's destruction wasn't successful")
-
-        print("scene properly cleaned")
-        self.deleted = True
-
+            client.destroy()
+        print("clear successful")
 
     def step(self):
         self.frame = self.world.tick()
