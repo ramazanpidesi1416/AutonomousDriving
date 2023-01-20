@@ -6,6 +6,12 @@ import os
 import sys
 import numpy as np
 import cv2
+import argparse
+import threading
+
+# carla default scripts
+import __generate_traffic
+
 
 # setup of system variables for carla
 try:
@@ -20,6 +26,7 @@ class CarlaEnvironment:
 
     def __init__(self, delta_seconds=1/30.0, no_rendering_mode=False, synchronous_mode=True):
         self.initialization_successful = False
+        self.deleted = False
         self.client = carla.Client('localhost', 2000)
         self.client.set_timeout(5.0)
         self.world = self.client.get_world()
@@ -37,15 +44,25 @@ class CarlaEnvironment:
 
         self.actor_list = []
         self.initialization_successful = True
+        print("scene initialization is successful")
+
 
     def __del__(self):
-        if not self.initialization_successful:
-            return
-        for client in self.actor_list:
-            client.destroy()
+        #if self.deleted:
+        #    return
+        #if not self.initialization_successful:
+        #    return
 
-        self.change_settings(delta_seconds=1/30.0, no_rendering_mode=False, synchronous_mode=False)
+        self.change_settings(delta_seconds=1 / 30.0, no_rendering_mode=False, synchronous_mode=False)
+        for client in self.actor_list:
+            try:
+                client.destroy()
+            except Exception:
+                print("an actor's destruction wasn't successful")
+
         print("scene properly cleaned")
+        self.deleted = True
+
 
     def step(self):
         self.frame = self.world.tick()
@@ -67,12 +84,35 @@ class CarlaEnvironment:
             fixed_delta_seconds=self.delta_seconds))
 
 
+class vector:
+    def __init__(self, x=0.0, y=0.0, z=0.0):
+        self.x = x
+        self.y = y
+        self.z = z
+
+
 class Vehicle:
-    def __init__(self, carla_environment, vehicle_type="model3"):
-        spawn_point = carla_environment.get_map_spawnpoints()[0]
-        bp = carla_environment.blueprint_library.filter(vehicle_type)[0]
-        self.actor = carla_environment.world.spawn_actor(bp, spawn_point)
+    """spawn_point can be a vector or an index, if given an index it will be i'th default spawn point in carla map, if left as None spawn point will be picked random"""
+    def __init__(self, carla_environment, vehicle_type="model3", autopilot=False, spawn_point=None):
+        try:
+            if type(spawn_point) == type(vector):
+                spawn_point = carla.Transform(spawn_point.x, spawn_point.y, spawn_point.z)
+            elif spawn_point is not None:
+                spawn_point = carla_environment.get_map_spawnpoints()[spawn_point]
+            else:
+                spawn_point = random.choice(carla_environment.get_map_spawnpoints())
+
+            bp = carla_environment.blueprint_library.filter(vehicle_type)[0]
+            self.actor = carla_environment.world.spawn_actor(bp, spawn_point)
+        except Exception:
+            print("vehicle couldn't initialized")
+            return
+
         carla_environment.actor_list.append(self.actor)
+        self.autopilot = autopilot
+        self.actor.set_autopilot(self.autopilot)
+
+
 
     def apply_control(self, carla_vehicle_control):
         self.actor.apply_control(carla_vehicle_control)
@@ -87,12 +127,6 @@ class Vehicle:
                                                       gear=gear))
 
 
-class vector:
-    def __init__(self, x=0.0, y=0.0, z=0.0):
-        self.x = x
-        self.y = y
-        self.z = z
-
 class Camera:
 
     def __init__(self, carla_environment, attaching_carla_actor, image_width=640, image_height=480, fov=110, displacement=vector(2.5, 0, 0.7)):
@@ -104,6 +138,21 @@ class Camera:
         self.actor = carla_environment.world.spawn_actor(self.blueprint, self.displacement, attach_to=attaching_carla_actor)
         carla_environment.actor_list.append(self.actor)
 
+    def get_image(self):
+        return self.actor
 
+
+def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
+                              generationv='All', generationw='2', hero=False, host='127.0.0.1', hybrid=False,
+                              no_rendering=False, number_of_vehicles=30, number_of_walkers=10, port=2000, respawn=False,
+                              safe=False, seed=None, seedw=0, tm_port=8000):
+
+    args = argparse.Namespace(asynch=asynch, car_lights_on=car_lights_on, filterv=filterv, filterw=filterw,
+                              generationv=generationv, generationw=generationw, hero=hero, host=host, hybrid=hybrid,
+                              no_rendering=no_rendering, number_of_vehicles=number_of_vehicles, number_of_walkers=number_of_walkers, port=port, respawn=respawn,
+                              safe=safe, seed=seed, seedw=seedw, tm_port=tm_port)
+
+    thread = threading.Thread(target=__generate_traffic.main, args=[args])
+    thread.run()
 
 
