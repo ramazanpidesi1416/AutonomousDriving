@@ -17,25 +17,30 @@ def save_image(image):
     save_image_count += 1
     print(image_name)
 
-pygame_screen = None
 def pygame_init():
-    global pygame_screen
-    if pygame_screen is None:
-        pygame.init()
-        pygame.display.set_caption("camera")
-        pygame_screen = pygame.display.set_mode((IM_WIDTH, IM_HEIGHT))
+    pygame.init()
+    pygame.display.set_caption("camera")
+    pygame_screen = pygame.display.set_mode((IM_WIDTH, IM_HEIGHT))
+    return pygame_screen
 
-def show_image(image):
-    global pygame_screen
-    pygame_init()
+
+camera_image = None
+def save_image_memory(image):
+    global camera_image
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     array = np.reshape(array, (image.height, image.width, 4))
     array = array[:, :, :3]
     array = array[:, :, ::-1]
-    image_surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
+    camera_image = array
+
+def show_image_pygame(pygame_screen):
+    global camera_image
+    if camera_image is None:
+        return
+    image_surface = pygame.surfarray.make_surface(camera_image.swapaxes(0, 1))
     pygame_screen.blit(image_surface, (0, 0))
     pygame.display.update()
-    time.sleep(1/60)
+    pygame.event.pump()
 
 counter = 0
 def count():
@@ -49,15 +54,17 @@ try:
     vehicles = []
     #for i in range(30):
     #     vehicles.append(Vehicle(env, "model3", True))
-    vehicle = Vehicle(env, "model3", False, 0)
+    vehicle = Vehicle(env, "model3", True, 0)
     camera = Camera(env, vehicle.actor, IM_WIDTH, IM_HEIGHT, 110, vector(2.5, 0, 0.7))
 
-    vehicle.apply_control(throttle=1.0)
+    # vehicle.apply_control(throttle=1.0)
 
-    camera.actor.listen(lambda image: show_image(image))
+    camera.actor.listen(lambda image: save_image_memory(image))
+    pygame_screen = pygame_init()
 
     while True:
         env.step()
+        show_image_pygame(pygame_screen)
 
     #generate_traffic()
 
