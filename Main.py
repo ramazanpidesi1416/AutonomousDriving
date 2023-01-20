@@ -3,7 +3,6 @@ import cv2
 
 import __generate_traffic as traffic
 from CarlaEnvironments import *
-import pygame
 
 # hyper parameters
 IM_WIDTH = 640
@@ -17,13 +16,6 @@ def save_image(image):
     save_image_count += 1
     print(image_name)
 
-def pygame_init():
-    pygame.init()
-    pygame.display.set_caption("camera")
-    pygame_screen = pygame.display.set_mode((IM_WIDTH, IM_HEIGHT))
-    return pygame_screen
-
-
 camera_image = None
 def save_image_memory(image):
     global camera_image
@@ -32,15 +24,6 @@ def save_image_memory(image):
     array = array[:, :, :3]
     array = array[:, :, ::-1]
     camera_image = array
-
-def show_image_pygame(pygame_screen):
-    global camera_image
-    if camera_image is None:
-        return
-    image_surface = pygame.surfarray.make_surface(camera_image.swapaxes(0, 1))
-    pygame_screen.blit(image_surface, (0, 0))
-    pygame.display.update()
-    pygame.event.pump()
 
 def show_image_cv2():
     global camera_image
