@@ -92,14 +92,24 @@ class Vehicle:
     """spawn_point can be a vector or an index, if given an index it will be i'th default spawn point in carla map, if left as None spawn point will be picked random"""
     def __init__(self, carla_environment, vehicle_type="model3", autopilot=False, spawn_point=None):
         try:
-            if type(spawn_point) == type(vector):
+            if type(spawn_point) == vector:
                 spawn_point = carla.Transform(spawn_point.x, spawn_point.y, spawn_point.z)
-            elif spawn_point is not None:
+            elif type(spawn_point) == int:
                 spawn_point = carla_environment.get_map_spawnpoints()[spawn_point]
-            else:
+            elif spawn_point is None:
                 spawn_point = random.choice(carla_environment.get_map_spawnpoints())
+            else:
+                print("spawn_point must be a int, vector or None")
+                raise Exception
 
-            bp = carla_environment.blueprint_library.filter(vehicle_type)[0]
+            if type(vehicle_type) == str:
+                bp = carla_environment.blueprint_library.filter(vehicle_type)[0]
+            elif vehicle_type is None:
+                bp = random.choice(carla_environment.blueprint_library.filter('vehicle.*.*'))
+            else:
+                print("vehicle type must be a string or None")
+                raise Exception
+
             self.actor = carla_environment.world.spawn_actor(bp, spawn_point)
         except Exception:
             print("vehicle couldn't initialized")
@@ -138,7 +148,6 @@ class Camera:
     def get_image(self):
         return self.actor
 
-
 def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
                               generationv='All', generationw='2', hero=False, host='127.0.0.1', hybrid=False,
                               no_rendering=False, number_of_vehicles=30, number_of_walkers=10, port=2000, respawn=False,
@@ -152,4 +161,33 @@ def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", fil
     thread = threading.Thread(target=__generate_traffic.main, args=[args])
     thread.run()
 
+save_image_count = 0
+def save_image(image):
+    global save_image_count
+    image_name = "camera_data/image%06d.png" % save_image_count
+    image.save_to_disk(image_name)
+    save_image_count += 1
+    print(image_name)
+
+camera_image = None
+def save_image_memory(image):
+    global camera_image
+    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+    array = np.reshape(array, (image.height, image.width, 4))
+    array = array[:, :, :3]
+    array = array[:, :, ::-1]
+    camera_image = array
+
+def show_image_cv2():
+    global camera_image
+    if camera_image is None:
+        return
+    cv2.imshow("camera", cv2.cvtColor(camera_image, cv2.COLOR_RGB2BGR))
+    cv2.waitKey(2)
+
+counter = 0
+def count():
+    global counter
+    counter += 1
+    print(counter)
 
