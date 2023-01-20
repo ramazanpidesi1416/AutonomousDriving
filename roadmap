@@ -1,0 +1,22 @@
+API:
+pedestrians
+being able to control the route of autopilot
+different camera types
+different sensors (gps, lidar)
+
+Autonomous Control Ideas:
+    Approach 1:
+    Q-learning based approach that takes the sensor data and takes the target coordinates to approach to.
+    The model will try to go to specified coordinates without breaking traffic rules or colliding with any obstacle.
+    We will supply the coordinates based on the shortest route for given 10 checkpoints
+
+    Approach 2:
+    Process the images to find the objects in the screen, middle point of lanes in the road and weather or not there are
+    any obstacle in front. Using these variables, construct a driving logic.
+
+    Approach 3:
+    Configure the autopilots to drive in desired route. Track the movement of autopilots
+    and train the neural network for replicating their behaviour.
+
+Approach 3 can be used to speed up the training of approach 1. we can get a initially working model from approach 3 quicker
+and continue it's training with approach 1.
