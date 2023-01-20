@@ -6,3 +6,5 @@
 .idea/inspectionProfiles/Project_Default.xml
 .idea/inspectionProfiles/profiles_settings.xml
 .idea/AutonomousDriving.iml
+*.png
+__pycache__/CarlaEnvironments.cpython-37.pyc
