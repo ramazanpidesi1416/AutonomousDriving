@@ -44,8 +44,16 @@ class CarlaEnvironment:
 
         self.actor_list = []
         self.initialization_successful = True
+
+        #self.change_map("town03")
         print("scene initialization is successful")
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        #self.__del__()
+        self.__del__()
 
     def __del__(self):
         print("destructor is called")
@@ -80,6 +88,8 @@ class CarlaEnvironment:
             synchronous_mode=self.no_rendering_mode,
             fixed_delta_seconds=self.delta_seconds))
 
+    def change_map(self, map_name="town3"):
+        self.world = self.client.load_world(map_name)
 
 class vector:
     def __init__(self, x=0.0, y=0.0, z=0.0):
