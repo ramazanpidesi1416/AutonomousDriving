@@ -134,6 +134,29 @@ class Vehicle:
                                                       gear=gear))
 
 
+class Pedestrian:
+    def __init__(self, carla_environment, start_position=None):
+        try:
+            self.bp = random.choice(carla_environment.world.get_blueprint_library().filter('*walker.pedestrian*'))
+            if start_position is None:
+                self.transform = carla.Transform(carla_environment.world.get_random_location_from_navigation())
+            else:
+                self.transform = carla.Transform(carla.Location(x=start_position.x, y=start_position.y, z=start_position.z))
+
+            self.actor = carla_environment.world.try_spawn_actor(self.bp, self.transform)
+            self.controller_bp = carla_environment.world.get_blueprint_library().find('controller.ai.walker')
+            self.controller = carla_environment.world.spawn_actor(self.controller_bp, self.actor.get_transform(), self.actor)
+        except:
+            print("Pedestrian couldn't initialized")
+            return
+        carla_environment.step()
+        self.controller.start()
+        self.controller.go_to_location(carla_environment.world.get_random_location_from_navigation())
+        self.controller.set_max_speed(1 + random.random())
+        carla_environment.actor_list.append(self.actor)
+        carla_environment.actor_list.append(self.controller)
+
+
 class Camera:
 
     def __init__(self, carla_environment, attaching_carla_actor, image_width=640, image_height=480, fov=110, displacement=vector(2.5, 0, 0.7)):
@@ -147,6 +170,8 @@ class Camera:
 
     def get_image(self):
         return self.actor
+
+
 
 def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
                               generationv='All', generationw='2', hero=False, host='127.0.0.1', hybrid=False,
