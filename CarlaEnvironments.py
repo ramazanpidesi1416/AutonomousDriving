@@ -24,11 +24,11 @@ except IndexError:
 
 class CarlaEnvironment:
 
-    def __init__(self, delta_seconds=1/30.0, no_rendering_mode=False, synchronous_mode=True):
+    def __init__(self, delta_seconds=1/30.0, no_rendering_mode=False, synchronous_mode=True, port=2000):
         self.initialization_successful = False
         self.deleted = False
-        self.client = carla.Client('localhost', 2000)
-        self.client.set_timeout(5.0)
+        self.client = carla.Client('localhost', port)
+        self.client.set_timeout(15.0)
         self.world = self.client.get_world()
         self.blueprint_library = self.world.get_blueprint_library()
 
