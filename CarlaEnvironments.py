@@ -203,18 +203,38 @@ class Pedestrian:
 
 class Camera:
 
-    def __init__(self, carla_environment, attaching_carla_actor, image_width=640, image_height=480, fov=110, displacement=vector(2.5, 0, 0.7)):
-        self.blueprint = carla_environment.blueprint_library.find('sensor.camera.rgb')
+    def __init__(self, carla_environment, attaching_carla_actor, camera_type="rgb", image_width=640, image_height=480, fov=110, displacement=vector(2.5, 0, 0.7)):
+        self.blueprint = None
+        self.displacement = None
+        self.actor = None
+        self.camera_type = None
+
+        self.initialize_camera(carla_environment, attaching_carla_actor, camera_type, image_width, image_height, fov, displacement)
+
+        self.camera_image = None
+        self.actor.listen(lambda image: self.save_image_memory(image))
+        self.save_image_disc_count = 0
+
+    def initialize_camera(self, carla_environment, attaching_carla_actor, camera_type, image_width, image_height, fov, displacement):
+        if self.actor is not None:
+            carla_environment.actor_list.remove(self.actor)
+            self.actor.destroy()
+
+        self.camera_type = camera_type
+        if camera_type == "rgb":
+            self.blueprint = carla_environment.blueprint_library.find('sensor.camera.rgb')
+        elif camera_type == "semantic":
+            self.blueprint = carla_environment.blueprint_library.find('sensor.camera.semantic_segmentation')
+        else:
+            print("camera type is not valid, please use rgb or semantic camera")
+            return
+
         self.blueprint.set_attribute("image_size_x", f"{image_width}")
         self.blueprint.set_attribute("image_size_y", f"{image_height}")
         self.blueprint.set_attribute("fov", f"{fov}")
         self.displacement = carla.Transform(carla.Location(displacement.x, displacement.y, displacement.z))
         self.actor = carla_environment.world.spawn_actor(self.blueprint, self.displacement, attach_to=attaching_carla_actor)
         carla_environment.actor_list.append(self.actor)
-
-        self.camera_image = None
-        self.actor.listen(lambda image: self.save_image_memory(image))
-        self.save_image_disc_count = 0
 
     def save_image_memory(self, carla_image):
         array = np.frombuffer(carla_image.raw_data, dtype=np.dtype("uint8"))
@@ -238,19 +258,6 @@ class Camera:
         cv2.imshow(window_name, cv2.cvtColor(self.camera_image, cv2.COLOR_RGB2BGR))
         cv2.waitKey(2)
 
-def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
-                              generationv='All', generationw='2', hero=False, host='127.0.0.1', hybrid=False,
-                              no_rendering=False, number_of_vehicles=30, number_of_walkers=10, port=2000, respawn=False,
-                              safe=False, seed=None, seedw=0, tm_port=8000):
-
-    args = argparse.Namespace(asynch=asynch, car_lights_on=car_lights_on, filterv=filterv, filterw=filterw,
-                              generationv=generationv, generationw=generationw, hero=hero, host=host, hybrid=hybrid,
-                              no_rendering=no_rendering, number_of_vehicles=number_of_vehicles, number_of_walkers=number_of_walkers, port=port, respawn=respawn,
-                              safe=safe, seed=seed, seedw=seedw, tm_port=tm_port)
-
-    thread = threading.Thread(target=__generate_traffic.main, args=[args])
-    thread.run()
-
 class GNSS:
 
     def __init__(self, carla_environment, attaching_carla_actor):
@@ -271,6 +278,20 @@ class GNSS:
 
     def display_data(self):
         print("X:{:.2f} Y:{:.2f} Z:{:.2f} rotX={:.2f} rotY={:.2f} rotZ={:.2f}".format(self.data_position.x, self.data_position.y, self.data_position.z, self.data_rotation.x, self.data_rotation.y, self.data_rotation.z))
+
+
+def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
+                              generationv='All', generationw='2', hero=False, host='127.0.0.1', hybrid=False,
+                              no_rendering=False, number_of_vehicles=30, number_of_walkers=10, port=2000, respawn=False,
+                              safe=False, seed=None, seedw=0, tm_port=8000):
+
+    args = argparse.Namespace(asynch=asynch, car_lights_on=car_lights_on, filterv=filterv, filterw=filterw,
+                              generationv=generationv, generationw=generationw, hero=hero, host=host, hybrid=hybrid,
+                              no_rendering=no_rendering, number_of_vehicles=number_of_vehicles, number_of_walkers=number_of_walkers, port=port, respawn=respawn,
+                              safe=safe, seed=seed, seedw=seedw, tm_port=tm_port)
+
+    thread = threading.Thread(target=__generate_traffic.main, args=[args])
+    thread.run()
 
 counter = 0
 def count():
