@@ -28,7 +28,7 @@ class CarlaEnvironment:
         self.initialization_successful = False
         self.deleted = False
         self.client = carla.Client('localhost', port)
-        self.client.set_timeout(15.0)
+        self.client.set_timeout(10.0)
         self.world = self.client.get_world()
         self.blueprint_library = self.world.get_blueprint_library()
 
@@ -46,28 +46,48 @@ class CarlaEnvironment:
         self.initialization_successful = True
 
         #self.change_map("town03")
+        self.clear_objects()
         print("scene initialization is successful")
 
     def __enter__(self):
         return self
 
     def __exit__(self, type, value, traceback):
-        #self.__del__()
         self.__del__()
 
     def __del__(self):
         print("destructor is called")
         self.change_settings(delta_seconds=1 / 30.0, no_rendering_mode=False, synchronous_mode=False)
-        try:
-            self.clear_objects()
-        except:
-            pass
+        self.clear_objects()
 
     def clear_objects(self):
-        print("clearing the environment")
-        for client in self.actor_list:
-            client.destroy()
-        print("clear successful")
+        for a in self.world.get_actors().filter("vehicle*"):
+            if a.is_alive:
+                try:
+                    a.destroy()
+                except Exception as e:
+                    print(e)
+
+        for a in self.world.get_actors().filter("walker.pedestrian*"):
+            if a.is_alive:
+                try:
+                    a.destroy()
+                except Exception as e:
+                    print(e)
+
+        for a in self.world.get_actors().filter("controller.ai.walker"):
+            if a.is_alive:
+                try:
+                    a.destroy()
+                except Exception as e:
+                    print(e)
+
+        for a in self.world.get_actors().filter("sensor*"):
+            if a.is_alive:
+                try:
+                    a.destroy()
+                except Exception as e:
+                    print(e)
 
     def step(self):
         self.frame = self.world.tick()
@@ -161,6 +181,7 @@ class Pedestrian:
             return
         carla_environment.step()
         self.controller.start()
+        carla_environment.step()
         self.controller.go_to_location(carla_environment.world.get_random_location_from_navigation())
         self.controller.set_max_speed(1 + random.random())
         carla_environment.actor_list.append(self.actor)
