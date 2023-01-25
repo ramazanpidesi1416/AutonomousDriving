@@ -132,7 +132,6 @@ class vector:
         self.y = y
         self.z = z
 
-
 class Vehicle:
     """spawn_point can be a vector or an index, if given an index it will be i'th default spawn point in carla map, if left as None spawn point will be picked random"""
     def __init__(self, carla_environment, vehicle_type="model3", autopilot=False, spawn_point=None):
@@ -213,10 +212,31 @@ class Camera:
         self.actor = carla_environment.world.spawn_actor(self.blueprint, self.displacement, attach_to=attaching_carla_actor)
         carla_environment.actor_list.append(self.actor)
 
-    def get_image(self):
-        return self.actor
+        self.camera_image = None
+        self.actor.listen(lambda image: self.save_image_memory(image))
+        self.save_image_disc_count = 0
 
+    def save_image_memory(self, carla_image):
+        array = np.frombuffer(carla_image.raw_data, dtype=np.dtype("uint8"))
+        array = np.reshape(array, (carla_image.height, carla_image.width, 4))
+        array = array[:, :, :3]
+        array = array[:, :, ::-1]
+        self.camera_image = array
 
+    def save_image_to_disc(self):
+        if self.camera_image is None:
+            print("can't save image. image is null")
+            return
+        image_name = "camera_data/image%06d.png" % self.save_image_disc_count
+        cv2.imwrite(image_name, cv2.cvtColor(self.camera_image, cv2.COLOR_BGR2RGB))
+        self.save_image_disc_count += 1
+        print("{image_name} is saved to disc".format(image_name=image_name))
+
+    def display_data(self, window_name="camera"):
+        if self.camera_image is None:
+            return
+        cv2.imshow(window_name, cv2.cvtColor(self.camera_image, cv2.COLOR_RGB2BGR))
+        cv2.waitKey(2)
 
 def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
                               generationv='All', generationw='2', hero=False, host='127.0.0.1', hybrid=False,
@@ -231,33 +251,26 @@ def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", fil
     thread = threading.Thread(target=__generate_traffic.main, args=[args])
     thread.run()
 
-save_image_count = 0
-def save_image():
-    global save_image_count
-    global camera_image
-    if camera_image is None:
-        print("can't save image. image is null")
-        return
-    image_name = "camera_data/image%06d.png" % save_image_count
-    cv2.imwrite(image_name, cv2.cvtColor(camera_image, cv2.COLOR_BGR2RGB))
-    save_image_count += 1
-    print(image_name)
+class GNSS:
 
-camera_image = None
-def save_image_memory(image):
-    global camera_image
-    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
-    array = np.reshape(array, (image.height, image.width, 4))
-    array = array[:, :, :3]
-    array = array[:, :, ::-1]
-    camera_image = array
+    def __init__(self, carla_environment, attaching_carla_actor):
+        self.blueprint = carla_environment.world.get_blueprint_library().find('sensor.other.gnss')
+        self.transform = attaching_carla_actor.get_transform()
+        self.actor = carla_environment.world.spawn_actor(self.blueprint, self.transform, attach_to=attaching_carla_actor)
+        self.actor.listen(lambda data: self.save_data_memory(data))
+        self.gnss_data = None
+        carla_environment.actor_list.append(self.actor)
 
-def show_image_cv2():
-    global camera_image
-    if camera_image is None:
-        return
-    cv2.imshow("camera", cv2.cvtColor(camera_image, cv2.COLOR_RGB2BGR))
-    cv2.waitKey(2)
+        self.data_position = None
+        self.data_rotation = None
+
+    def save_data_memory(self, data):
+        self.gnss_data = data
+        self.data_position = vector(self.gnss_data.transform.location.x, self.gnss_data.transform.location.y, self.gnss_data.transform.location.z)
+        self.data_rotation = vector(self.gnss_data.transform.rotation.pitch, self.gnss_data.transform.rotation.yaw, self.gnss_data.transform.rotation.roll)
+
+    def display_data(self):
+        print("X:{:.2f} Y:{:.2f} Z:{:.2f} rotX={:.2f} rotY={:.2f} rotZ={:.2f}".format(self.data_position.x, self.data_position.y, self.data_position.z, self.data_rotation.x, self.data_rotation.y, self.data_rotation.z))
 
 counter = 0
 def count():
