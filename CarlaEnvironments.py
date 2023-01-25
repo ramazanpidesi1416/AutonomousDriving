@@ -27,27 +27,43 @@ class CarlaEnvironment:
     def __init__(self, delta_seconds=1/30.0, no_rendering_mode=False, synchronous_mode=True, port=2000):
         self.initialization_successful = False
         self.deleted = False
-        self.client = carla.Client('localhost', port)
-        self.client.set_timeout(10.0)
-        self.world = self.client.get_world()
-        self.blueprint_library = self.world.get_blueprint_library()
-
+        self.client = None
+        self.world = None
+        self.blueprint_library = None
         self.delta_seconds = delta_seconds
         self.no_rendering_mode = no_rendering_mode
         self.synchronous_mode = synchronous_mode
-
-        self._settings = self.world.get_settings()
-        self.frame = self.world.apply_settings(carla.WorldSettings(
-            no_rendering_mode=False,
-            synchronous_mode=True,
-            fixed_delta_seconds=self.delta_seconds))
-
+        self._settings = None
+        self.frame = None
         self.actor_list = []
-        self.initialization_successful = True
+        self.simulated_time = 0
 
+        self.connect_to_host(port)
+        self.initialize_world()
         #self.change_map("town03")
         self.clear_objects()
+
+        self.initialization_successful = True
+
         print("scene initialization is successful")
+
+    def connect_to_host(self, port):
+        self.client = carla.Client('localhost', port)
+        self.client.set_timeout(10.0)
+
+
+    def initialize_world(self):
+        self.world = self.client.get_world()
+        self.blueprint_library = self.world.get_blueprint_library()
+        self._settings = self.world.get_settings()
+        self.frame = self.world.apply_settings(carla.WorldSettings(
+            no_rendering_mode=self.no_rendering_mode,
+            synchronous_mode=self.synchronous_mode,
+            fixed_delta_seconds=self.delta_seconds))
+
+    def change_map(self, map_name="town3"):
+        self.world = self.client.load_world(map_name)
+        self.initialize_world()
 
     def __enter__(self):
         return self
@@ -91,6 +107,7 @@ class CarlaEnvironment:
 
     def step(self):
         self.frame = self.world.tick()
+        self.simulated_time += self.delta_seconds
 
     def get_map_spawnpoints(self):
         return self.world.get_map().get_spawn_points()
@@ -108,8 +125,6 @@ class CarlaEnvironment:
             synchronous_mode=self.no_rendering_mode,
             fixed_delta_seconds=self.delta_seconds))
 
-    def change_map(self, map_name="town3"):
-        self.world = self.client.load_world(map_name)
 
 class vector:
     def __init__(self, x=0.0, y=0.0, z=0.0):
@@ -181,7 +196,6 @@ class Pedestrian:
             return
         carla_environment.step()
         self.controller.start()
-        carla_environment.step()
         self.controller.go_to_location(carla_environment.world.get_random_location_from_navigation())
         self.controller.set_max_speed(1 + random.random())
         carla_environment.actor_list.append(self.actor)
@@ -218,10 +232,14 @@ def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", fil
     thread.run()
 
 save_image_count = 0
-def save_image(image):
+def save_image():
     global save_image_count
+    global camera_image
+    if camera_image is None:
+        print("can't save image. image is null")
+        return
     image_name = "camera_data/image%06d.png" % save_image_count
-    image.save_to_disk(image_name)
+    cv2.imwrite(image_name, cv2.cvtColor(camera_image, cv2.COLOR_BGR2RGB))
     save_image_count += 1
     print(image_name)
 
