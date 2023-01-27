@@ -237,6 +237,8 @@ class Camera:
         carla_environment.actor_list.append(self.actor)
 
     def save_image_memory(self, carla_image):
+        if self.camera_type == "semantic":
+            carla_image.convert(carla.ColorConverter.CityScapesPalette)
         array = np.frombuffer(carla_image.raw_data, dtype=np.dtype("uint8"))
         array = np.reshape(array, (carla_image.height, carla_image.width, 4))
         array = array[:, :, :3]
@@ -278,6 +280,52 @@ class GNSS:
 
     def display_data(self):
         print("X:{:.2f} Y:{:.2f} Z:{:.2f} rotX={:.2f} rotY={:.2f} rotZ={:.2f}".format(self.data_position.x, self.data_position.y, self.data_position.z, self.data_rotation.x, self.data_rotation.y, self.data_rotation.z))
+
+
+class CollusionSensor:
+
+    def __init__(self, carla_environment, attaching_carla_actor):
+        self.blueprint = carla_environment.world.get_blueprint_library().find('sensor.other.collision')
+        self.transform = attaching_carla_actor.get_transform()
+        self.actor = carla_environment.world.spawn_actor(self.blueprint, self.transform,
+                                                         attach_to=attaching_carla_actor)
+        self.actor.listen(lambda data: self.save_data_memory(data))
+        self.collusion_history = []
+
+        carla_environment.actor_list.append(self.actor)
+
+    def save_data_memory(self, data):
+        print(data)
+        self.collusion_history.append(data)
+
+class LaneInvasionSensor:
+
+    def __init__(self, carla_environment, attaching_carla_actor):
+        self.blueprint = carla_environment.world.get_blueprint_library().find('sensor.other.lane_invasion')
+        self.transform = attaching_carla_actor.get_transform()
+        self.actor = carla_environment.world.spawn_actor(self.blueprint, self.transform,
+                                                         attach_to=attaching_carla_actor)
+        self.actor.listen(lambda data: self.save_data_memory(data))
+        self.lane_invasion_history = []
+
+        carla_environment.actor_list.append(self.actor)
+
+    def save_data_memory(self, data):
+        print(data)
+        for marking in data.crossed_lane_markings:
+            print(marking.type)
+            print(marking.color)
+            print(marking.lane_change)
+        self.lane_invasion_history.append(data)
+
+class Lidar:
+
+    def __init__(self, carla_environment, attaching_carla_actor):
+        pass
+
+    def save_data_memory(self, data):
+        pass
+
 
 
 def generate_traffic(asynch=False, car_lights_on=False, filterv="vehicle.*", filterw='walker.pedestrian.*',
