@@ -1,3 +1,5 @@
+import math
+
 import carla
 import random
 import time
@@ -132,6 +134,21 @@ class vector:
         self.y = y
         self.z = z
 
+    def __add__(self, other):
+        return vector(self.x + other.x, self.y + other.y, self.z + other.z)
+
+    def __sub__(self, other):
+        return vector(self.x - other.x, self.y - other.y, self.z - other.z)
+
+    def __mul__(self, other):
+        return vector(other * self.x, other * self.y, other * self.z)
+
+    def __repr__(self):
+        return "x:{:.2f} y:{:.2f} z:{:.2f}".format(self.x, self.y, self.z)
+
+    def length(self):
+        return math.sqrt((self.x*self.x) + (self.y*self.y) + (self.z*self.z))
+
 class Vehicle:
     """spawn_point can be a vector or an index, if given an index it will be i'th default spawn point in carla map, if left as None spawn point will be picked random"""
     def __init__(self, carla_environment, vehicle_type="model3", autopilot=False, spawn_point=None):
@@ -147,14 +164,14 @@ class Vehicle:
                 raise Exception
 
             if type(vehicle_type) == str:
-                bp = carla_environment.blueprint_library.filter(vehicle_type)[0]
+                self.bp = carla_environment.blueprint_library.filter(vehicle_type)[0]
             elif vehicle_type is None:
-                bp = random.choice(carla_environment.blueprint_library.filter('vehicle.*.*'))
+                self.bp = random.choice(carla_environment.blueprint_library.filter('vehicle.*.*'))
             else:
                 print("vehicle type must be a string or None")
                 raise Exception
 
-            self.actor = carla_environment.world.spawn_actor(bp, spawn_point)
+            self.actor = carla_environment.world.spawn_actor(self.bp, spawn_point)
         except Exception:
             print("vehicle couldn't initialized")
             return
@@ -163,7 +180,14 @@ class Vehicle:
         self.autopilot = autopilot
         self.actor.set_autopilot(self.autopilot)
 
+        self.total_distance_travelled = 0.0
+        self._last_position = None
 
+    def update_total_distance_travelled(self):
+        current_position = vector(self.actor.get_transform().location.x, self.actor.get_transform().location.y, self.actor.get_transform().location.z)
+        if self._last_position is not None:
+            self.total_distance_travelled += (current_position - self._last_position).length()
+        self._last_position = current_position
 
     def apply_control(self, carla_vehicle_control):
         self.actor.apply_control(carla_vehicle_control)
