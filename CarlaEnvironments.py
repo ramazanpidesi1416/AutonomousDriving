@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 import argparse
 import threading
+import keyboard
 
 # carla default scripts
 import __generate_traffic
@@ -39,6 +40,7 @@ class CarlaEnvironment:
         self.frame = None
         self.actor_list = []
         self.simulated_time = 0
+        self.step_time = self.delta_seconds
 
         self.connect_to_host(port)
         self.initialize_world()
@@ -107,9 +109,15 @@ class CarlaEnvironment:
                 except Exception as e:
                     print(e)
 
-    def step(self):
+    def step(self, print_step_time=False):
+        begin = time.time()
         self.frame = self.world.tick()
         self.simulated_time += self.delta_seconds
+        self.step_time = (time.time()-begin)*1000
+
+        if print_step_time:
+            print("frame time: {:.2f}ms, simulation time: {:.1f} seconds".format(self.step_time, self.simulated_time))
+
 
     def get_map_spawnpoints(self):
         return self.world.get_map().get_spawn_points()
@@ -182,15 +190,22 @@ class Vehicle:
 
         self.total_distance_travelled = 0.0
         self._last_position = None
+        self._ignore_update = 5     # ignore the first 5 update of the simulation
+
+    def get_position(self):
+        return vector(self.actor.get_transform().location.x, self.actor.get_transform().location.y, self.actor.get_transform().location.z)
+
+    def get_rotation(self):
+        return vector(self.actor.get_transform().rotation.pitch, self.actor.get_transform().rotation.yaw, self.actor.get_transform().rotation.roll)
 
     def update_total_distance_travelled(self):
-        current_position = vector(self.actor.get_transform().location.x, self.actor.get_transform().location.y, self.actor.get_transform().location.z)
-        if self._last_position is not None:
+        current_position = self.get_position()
+        if self._last_position is not None and self._ignore_update == 0:
             self.total_distance_travelled += (current_position - self._last_position).length()
-        self._last_position = current_position
+        if self._ignore_update > 0:
+            self._ignore_update -= 1
 
-    def apply_control(self, carla_vehicle_control):
-        self.actor.apply_control(carla_vehicle_control)
+        self._last_position = current_position
 
     def apply_control(self, throttle=0.0, steer=0.0, brake=0.0, hand_brake=False, reverse=False, manual_gear_shift=False, gear=0):
         self.actor.apply_control(carla.VehicleControl(throttle=throttle,
@@ -200,6 +215,20 @@ class Vehicle:
                                                       reverse=reverse,
                                                       manual_gear_shift=manual_gear_shift,
                                                       gear=gear))
+
+    def update_manuel_control(self):
+        throttle = 0
+        brake = 0
+        steer = 0
+        if keyboard.is_pressed('ı'):
+            throttle = 0.5
+        if keyboard.is_pressed('k'):
+            brake = 0.3
+        if keyboard.is_pressed('j'):
+            steer = -0.3
+        if keyboard.is_pressed('l'):
+            steer = 1
+        self.apply_control(throttle=throttle, steer=steer, brake=brake)
 
 
 class Pedestrian:
@@ -315,12 +344,17 @@ class CollusionSensor:
                                                          attach_to=attaching_carla_actor)
         self.actor.listen(lambda data: self.save_data_memory(data))
         self.collusion_history = []
-
+        self.print_queue = []
         carla_environment.actor_list.append(self.actor)
 
     def save_data_memory(self, data):
-        print(data)
         self.collusion_history.append(data)
+        self.print_queue.append(data)
+
+    def display_data(self):
+        for collusion in self.print_queue:
+            self.print_queue.remove(collusion)
+            print(collusion)
 
 class LaneInvasionSensor:
 
@@ -331,16 +365,22 @@ class LaneInvasionSensor:
                                                          attach_to=attaching_carla_actor)
         self.actor.listen(lambda data: self.save_data_memory(data))
         self.lane_invasion_history = []
+        self.print_queue = []
 
         carla_environment.actor_list.append(self.actor)
 
     def save_data_memory(self, data):
-        print(data)
-        for marking in data.crossed_lane_markings:
-            print(marking.type)
-            print(marking.color)
-            print(marking.lane_change)
         self.lane_invasion_history.append(data)
+        self.print_queue.append(data)
+
+    def display_data(self):
+        for Invasion in self.print_queue:
+            self.print_queue.remove(Invasion)
+            print(Invasion)
+            for marking in Invasion.crossed_lane_markings:
+                print(marking.type)
+                print(marking.color)
+                print(marking.lane_change)
 
 class Lidar:
 
