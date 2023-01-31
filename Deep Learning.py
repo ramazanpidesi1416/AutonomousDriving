@@ -73,7 +73,7 @@ class TrainingEnvironment:
         self.image_width = image_width
         self.image_height = image_height
 
-        self.simulation_duration = 30  # runs are 300 seconds long (in-simulation time)
+        self.simulation_duration = 30 * 15  # runs are 30 seconds long (in-simulation time)
 
         self.carla_env = None
         self.vehicle = None
@@ -115,7 +115,7 @@ class TrainingEnvironment:
         reward = self._get_reward()
         print(reward)
 
-        done = self.carla_env.simulated_time >= self.simulation_duration
+        done = self.carla_env.simulated_step_count >= self.simulation_duration
         return next_state, reward, done, None
 
     def reset(self):
@@ -129,7 +129,11 @@ class TrainingEnvironment:
 
     def _get_state(self):
         position = self.vehicle.get_position()
-        return np.array([np.array([position.x, position.y, position.z]), self.camera.camera_image])
+        camera = self.camera.camera_image
+        if camera is None:
+            camera = np.zeros([self.image_height, self.image_width, 3])
+
+        return np.array([np.array([position.x, position.y, position.z]), camera])
 
     def _get_reward(self):
         distance = (self.vehicle.get_position() - vector(0, 0, 0)).length()
@@ -151,15 +155,15 @@ class DQNAgent:
         self.state_size = 3
         self.action_size = 5
         self.EPISODES = 1000
-        self.memory = deque(maxlen=1024 * 4)
+        self.memory = deque(maxlen=1024 * 2)
 
         self.gamma = 0.95  # discount rate, how important long term rewards are compared the short term rewards, 1 means identical, 0 means have no importance
         self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.03
-        self.epsilon_decay = 0.98
-        self.batch_size = 32
-        self.epoch_count = 4
-        self.train_start = 32
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.99
+        self.batch_size = 512
+        self.epoch_count = 2
+        self.train_start = 1024
 
         # create main model
         self.model = generate_model(input_shape_pos=(self.state_size,), input_shape_camera=[self.camera_height, self.camera_width, 3, ], action_space=self.action_size)

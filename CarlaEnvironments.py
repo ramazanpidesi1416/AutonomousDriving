@@ -40,6 +40,7 @@ class CarlaEnvironment:
         self.frame = None
         self.actor_list = []
         self.simulated_time = 0
+        self.simulated_step_count = 0
         self.step_time = self.delta_seconds
 
         self.connect_to_host(port)
@@ -113,6 +114,7 @@ class CarlaEnvironment:
         begin = time.time()
         self.frame = self.world.tick()
         self.simulated_time += self.delta_seconds
+        self.simulated_step_count += 1
         self.step_time = (time.time()-begin)*1000
 
         if print_step_time:
