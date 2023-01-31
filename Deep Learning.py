@@ -1,7 +1,7 @@
 from CarlaEnvironments import *
 
 import keras
-from keras.layers import Conv2D, Flatten, Dense
+from keras.layers import Conv2D, Flatten, Dense, Concatenate
 from keras.optimizers import Adam
 from keras.losses import MeanSquaredError
 from keras.models import Model, load_model
@@ -10,7 +10,7 @@ from collections import deque
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
-    # Restrict TensorFlow to only allocate a section of gpu
+    # Restrict TensorFlow to only allocate a section of gpu vram
     try:
         tf.config.experimental.set_virtual_device_configuration(
             gpus[0],
@@ -21,21 +21,32 @@ if gpus:
         # Virtual devices must be set before GPUs have been initialized
         print(e)
 
-"""
-def generate_model():
-    model = keras.Sequential()
-    model.add(Conv2D(8, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu', input_shape=[IM_HEIGHT, IM_WIDTH, 3]))
-    model.add(Conv2D(16, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu'))
-    model.add(Conv2D(16, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu'))
-    model.add(Conv2D(16, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu'))
-    model.add(Conv2D(1, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu'))
-    model.add(Flatten())
-    model.add(Dense(3, activation='sigmoid'))
+
+def generate_model(input_shape_pos, input_shape_camera, action_space):
+    x1_input = keras.Input(input_shape_pos)
+    x1 = Dense(64, activation='relu')(x1_input)
+    x1 = Dense(64, activation='relu')(x1)
+    x1 = Dense(64, activation='relu')(x1)
+
+    #model.add(Conv2D(8, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu', input_shape=[IM_HEIGHT, IM_WIDTH, 3]))
+    x2_input = keras.Input(shape=input_shape_camera)
+    x2 = Conv2D(16, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu')(x2_input)
+    x2 = Conv2D(16, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu')(x2)
+    x2 = Conv2D(8, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu')(x2)
+    x2 = Conv2D(8, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu')(x2)
+    x2 = Conv2D(4, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu')(x2)
+    x2 = Conv2D(1, kernel_size=[3, 3], strides=[1, 1], padding='same', activation='relu')(x2)
+    x2 = Flatten()(x2)
+
+    final = Concatenate()([x1, x2])
+    final = Dense(action_space, activation='linear')(final)
+
+    model = Model(inputs=[x1_input, x2_input], outputs=final)
     model.compile(optimizer=Adam(learning_rate=0.001), loss=MeanSquaredError(), metrics=['Accuracy'])
     model.summary()
     return model
-"""
 
+"""
 def generate_model(input_shape, action_space):
     model = keras.Sequential()
     model.add(Dense(128, activation='relu', input_shape=input_shape))
@@ -46,6 +57,7 @@ def generate_model(input_shape, action_space):
     model.compile(optimizer=Adam(learning_rate=0.001), loss=MeanSquaredError(), metrics=['Accuracy'])
     model.summary()
     return model
+"""
 
 def env_reset(carla_environment):
     carla_environment.clear_objects()
@@ -54,15 +66,19 @@ def env_reset(carla_environment):
 
 class TrainingEnvironment:
 
-    def __init__(self, delta_seconds=1/15.0, no_rendering_mode=False, port=2000):
+    def __init__(self, delta_seconds=1/15.0, no_rendering_mode=False, port=2000, image_width=64, image_height=64):
         self.delta_seconds = delta_seconds
         self.no_rendering_mode = no_rendering_mode
         self.port = port
+        self.image_width = image_width
+        self.image_height = image_height
 
         self.simulation_duration = 30  # runs are 300 seconds long (in-simulation time)
 
         self.carla_env = None
         self.vehicle = None
+        self.collusion_sensor = None
+        self.camera = None
         self.reset()
 
 
@@ -106,20 +122,31 @@ class TrainingEnvironment:
         self.carla_env = CarlaEnvironment(delta_seconds=self.delta_seconds, no_rendering_mode=self.no_rendering_mode, port=self.port)
         self.carla_env.change_map('town03')
         self.vehicle = Vehicle(self.carla_env, spawn_point=0)
+        self.collusion_sensor = CollusionSensor(self.carla_env, self.vehicle.actor)
+        self.camera = Camera(self.carla_env, self.vehicle.actor, camera_type='semantic', image_width=self.image_width, image_height=self.image_height)
+
         return self._get_state()
 
     def _get_state(self):
         position = self.vehicle.get_position()
-        return [position.x, position.y, position.z]
+        return np.array([np.array([position.x, position.y, position.z]), self.camera.camera_image])
 
     def _get_reward(self):
-        current_position = self.vehicle.get_position()
-        return current_position.length()
+        distance = (self.vehicle.get_position() - vector(0, 0, 0)).length()
+        reward = -distance
+
+        for _ in self.collusion_sensor.collusion_history:
+            reward -= 500
+
+        return reward
 
 class DQNAgent:
 
     def __init__(self):
-        self.env = TrainingEnvironment(delta_seconds=1/15, no_rendering_mode=False, port=4565)
+        self.camera_width = 64
+        self.camera_height = 64
+
+        self.env = TrainingEnvironment(delta_seconds=1/15, no_rendering_mode=False, port=4565, image_width=self.camera_width, image_height=self.camera_height)
 
         self.state_size = 3
         self.action_size = 5
@@ -129,13 +156,13 @@ class DQNAgent:
         self.gamma = 0.95  # discount rate, how important long term rewards are compared the short term rewards, 1 means identical, 0 means have no importance
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.03
-        self.epsilon_decay = 0.92
-        self.batch_size = 1024
+        self.epsilon_decay = 0.98
+        self.batch_size = 32
         self.epoch_count = 4
-        self.train_start = 1024
+        self.train_start = 32
 
         # create main model
-        self.model = generate_model(input_shape=(self.state_size,), action_space=self.action_size)
+        self.model = generate_model(input_shape_pos=(self.state_size,), input_shape_camera=[self.camera_height, self.camera_width, 3, ], action_space=self.action_size)
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -149,28 +176,37 @@ class DQNAgent:
         if np.random.random() <= self.epsilon:
             return random.randrange(self.action_size)
         else:
-            return np.argmax(self.model.predict(state, verbose=0))
+            position = np.reshape(state[0], [1, 3])
+            camera = np.reshape(state[1], [1, self.camera_height, self.camera_width, 3])
+            return np.argmax(self.model.predict([position, camera], verbose=0))
 
     def replay(self):
         if len(self.memory) < self.train_start:
             return
         # Randomly sample minibatch from the memory
         minibatch = random.sample(self.memory, min(len(self.memory), self.batch_size))
+        minibatch = np.array(minibatch)
 
-        state = np.zeros((self.batch_size, self.state_size))
-        next_state = np.zeros((self.batch_size, self.state_size))
-        action, reward, done = [], [], []
+        state = minibatch[:, 0]
+        action = minibatch[:, 1]
+        reward = minibatch[:, 2]
+        next_state = minibatch[:, 3]
+        done = minibatch[:, 4]
 
+        state_pos = np.zeros([self.batch_size, 3])
+        state_cam = np.zeros([self.batch_size, self.camera_height, self.camera_width, 3])
         for i in range(self.batch_size):
-            state[i] = minibatch[i][0]
-            action.append(minibatch[i][1])
-            reward.append(minibatch[i][2])
-            next_state[i] = minibatch[i][3]
-            done.append(minibatch[i][4])
+            state_pos[i] = state[i][0]
+            state_cam[i] = state[i][1]
 
-        # do batch prediction to save speed
-        target = self.model.predict(state, verbose=0)
-        target_next = self.model.predict(next_state, verbose=0)
+        next_state_pos = np.zeros([self.batch_size, 3])
+        next_state_cam = np.zeros([self.batch_size, self.camera_height, self.camera_width, 3])
+        for i in range(self.batch_size):
+            next_state_pos[i] = next_state[i][0]
+            next_state_cam[i] = next_state[i][1]
+
+        target = self.model.predict([state_pos, state_cam], verbose=0)
+        target_next = self.model.predict([next_state_pos, next_state_cam], verbose=0)
 
         for i in range(self.batch_size):
             # correction on the Q value for the action used
@@ -184,7 +220,7 @@ class DQNAgent:
                 target[i][action[i]] = reward[i] + self.gamma * (np.amax(target_next[i]))
 
         # Train the Neural Network with batches
-        self.model.fit(state, target, batch_size=self.batch_size, epochs=self.epoch_count, verbose=1)
+        self.model.fit([state_pos, state_cam], target, batch_size=self.batch_size, epochs=self.epoch_count, verbose=1)
         self.decay_epsilon()
 
     def load(self, name):
@@ -196,13 +232,13 @@ class DQNAgent:
     def run(self):
         for e in range(self.EPISODES):
             state = self.env.reset()
-            state = np.reshape(state, [1, self.state_size])
+            # state = np.reshape(state, [1, self.state_size])
             done = False
             i = 0
             while not done:
                 action = self.act(state)
                 next_state, reward, done, _ = self.env.step(action)
-                next_state = np.reshape(next_state, [1, self.state_size])
+                #next_state = np.reshape(next_state, [1, self.state_size])
                 if not done:
                     reward = reward
                 else:
